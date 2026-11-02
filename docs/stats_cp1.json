@@ -1,0 +1,85 @@
+{
+  "note": "Run on 2 Nov 2026: full JSON metadata (335 sequences); pixel checks on a copied subset of 4 S1 sequences (0201, 0324, 1, 23) - hence images_with_all_files counts only that subset. Sequence 1 lists 11 S1 images but 1 file is missing on disk.",
+  "root": "D:/Descărcări/SEN12FLOOD/SEN12FLOOD",
+  "index": {
+    "S1": {
+      "sequences": 335,
+      "images_listed": 3957,
+      "images_with_all_files": 43,
+      "images_missing_files": 3914,
+      "images_per_seq_min_median_max": [
+        2,
+        10,
+        31
+      ],
+      "date_min": "2018-12-15",
+      "date_max": "2019-05-17",
+      "pct_images_flooded": 34.7,
+      "pct_sequences_with_flood": 40.3,
+      "pct_full_coverage": null,
+      "revisit_days_median": 5,
+      "revisit_days_p90": 11,
+      "revisit_days_max": 12,
+      "missing_dates": 0,
+      "missing_labels": 0,
+      "orbit_counts": {
+        "ASCENDING": 2353,
+        "DESCENDING": 1604
+      }
+    },
+    "S2": {
+      "sequences": 335,
+      "images_listed": 3131,
+      "images_with_all_files": 0,
+      "images_missing_files": 3131,
+      "images_per_seq_min_median_max": [
+        1,
+        7,
+        24
+      ],
+      "date_min": "2018-12-13",
+      "date_max": "2019-05-20",
+      "pct_images_flooded": 38.3,
+      "pct_sequences_with_flood": 60,
+      "pct_full_coverage": 85.3,
+      "revisit_days_median": 5,
+      "revisit_days_p90": 15,
+      "revisit_days_max": 35,
+      "missing_dates": 0,
+      "missing_labels": 0
+    }
+  },
+  "split": {
+    "train": 258,
+    "test": 77
+  },
+  "split_groups": 21,
+  "official_split_leakage": {
+    "official_train_seqs": 267,
+    "official_test_seqs": 68,
+    "test_to_nearest_train_km_median": 5.1,
+    "test_within_10km_of_train": 67,
+    "test_s1_scenes_also_in_train": 249,
+    "test_s1_scenes": 250
+  },
+  "pixels_S1": {
+    "images_sampled": 43,
+    "nodata_pct_mean": 0,
+    "median_VV_dB_flooded": -9.89,
+    "median_VH_dB_flooded": -15.55,
+    "median_VV_dB_not_flooded": -10.4,
+    "median_VH_dB_not_flooded": -16.59,
+    "profile_VV": {
+      "crs": "EPSG:4326",
+      "width": 547,
+      "height": 520,
+      "res": [
+        0.00008983152841195215,
+        0.00008983152841195215
+      ],
+      "dtype": "float32",
+      "count": 1,
+      "nodata": null
+    }
+  }
+}
