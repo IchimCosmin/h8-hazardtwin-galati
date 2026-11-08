@@ -44,6 +44,37 @@ def cmd_figure(a):
     print("wrote", path)
 
 
+def cmd_learn(a):
+    import time
+
+    import numpy as np
+
+    from .features import extract_features
+    from .learn import run_experiment
+
+    out = Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
+    fp, hp = out / "features.csv", out / "vv_hist.npy"
+    if fp.exists() and hp.exists() and not a.recompute:
+        df, hists = pd.read_csv(fp, dtype={"seq": str}), np.load(hp)
+    else:
+        t0 = time.time()
+        idx = build_index(a.root, sensors=("S1",))
+        print(f"index: {int(idx.available.sum())} S1 images with files / {len(idx)} listed", flush=True)
+        df, hists = extract_features(idx, n_jobs=a.jobs, verbose=5)
+        df.to_csv(fp, index=False)
+        np.save(hp, hists)
+        print(f"features: {df.shape} in {time.time() - t0:.0f}s", flush=True)
+    seeds = list(range(a.seeds))
+    res = run_experiment(df, hists, seeds=seeds, test_frac=a.test_frac)
+    res.round(4).to_csv(out / a.results, index=False)  # 4 zecimale: CSV-ul raportat
+    s = res[res.row_type != "run"][["row_type", "method", "metric", "mean", "ci95_lo", "ci95_hi"]]
+    print(s.to_string(index=False, float_format=lambda v: f"{v:.3f}"))
+    off = res[(res.row_type == "run") & (res.split == "official_leaky")][["method", "bal_acc", "acc", "f1", "auc"]]
+    print("\nofficial (leaky) split:\n" + off.to_string(index=False, float_format=lambda v: f"{v:.3f}"))
+    print("wrote", out / a.results)
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="h8twin")
     sub = p.add_subparsers(required=True)
@@ -61,6 +92,15 @@ def main(argv=None):
     f.add_argument("--water-db", type=float, default=-18.0)
     f.add_argument("--lang", choices=["ro", "en"], default="ro")
     f.set_defaults(fn=cmd_figure)
+    l = sub.add_parser("learn")
+    l.add_argument("--root", required=True)
+    l.add_argument("--out", default="outputs")
+    l.add_argument("--seeds", type=int, default=5)
+    l.add_argument("--test-frac", type=float, default=0.2)
+    l.add_argument("--jobs", type=int, default=-1)
+    l.add_argument("--results", default="results_v1_H8.csv")
+    l.add_argument("--recompute", action="store_true")
+    l.set_defaults(fn=cmd_learn)
     a = p.parse_args(argv)
     a.fn(a)
 
