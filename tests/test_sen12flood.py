@@ -70,3 +70,21 @@ def test_cli(root, tmp_path):
     assert st["index"]["S1"]["revisit_days_median"] == 6
     main(["figure", "--out", str(out)])
     assert (out / "fig_cp1_sequence.png").exists()
+
+
+def test_learn_runs(root, tmp_path):
+    from h8twin.features import extract_features
+    from h8twin.learn import METHODS, otsu_from_hist, run_experiment
+
+    idx = build_index(root, sensors=("S1",))
+    df, hists = extract_features(idx, n_jobs=1)
+    assert len(df) == 12 and hists.shape == (12, 180)
+    assert df.loc[df.t_index == 0, "n_prev"].eq(0).all()
+    # dark water appears after the label -> VV drops vs. the past
+    assert df.loc[df.flooding == 1, "d_vv_lt3"].min() > 0.3
+    thr = otsu_from_hist(hists.sum(0))
+    assert -35 < thr < 0
+    res = run_experiment(df, hists, seeds=(0, 1), test_frac=0.34)
+    runs = res[res.row_type == "run"]
+    assert set(runs.method) == set(METHODS)
+    assert {"summary", "paired_diff"} <= set(res.row_type)
