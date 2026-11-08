@@ -2,4 +2,7 @@ numpy
 pandas
 rasterio
 matplotlib
+scipy
+scikit-learn
+joblib
 pytest

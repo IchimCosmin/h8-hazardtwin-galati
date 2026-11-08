@@ -7,7 +7,7 @@ name = "h8twin"
 version = "0.1.0"
 description = "H8 HazardTwin (Galati, Danube): flood detection from multi-temporal Sentinel-1 - data ingestion"
 requires-python = ">=3.10"
-dependencies = ["numpy", "pandas", "rasterio", "matplotlib"]
+dependencies = ["numpy", "pandas", "rasterio", "matplotlib", "scipy", "scikit-learn", "joblib"]
 
 [project.optional-dependencies]
 dev = ["pytest"]
