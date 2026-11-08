@@ -58,8 +58,9 @@ pe regiuni de 2°: 258 de secvențe în train și 77 în test.
 - **Protocol:** split spațial pe celule de 2° × 2° (21 de grupuri, serii întregi), 20 % din serii în test, 5 seed-uri,
   IC 95 % (t) și diferențe pereche. Split-ul oficial are scurgere, iar setul are un singur sezon, deci nu se poate temporal/LOYO.
 
-Figura CP2 (referință, imagine inundată, anomalie Δ pe secvența 1) se generează cu
-`python docs/make_fig_cp2.py <root SEN12FLOOD> fig_cp2_representation.png 1 2019-03-18` și apare pe slide-ul 1 din CP2.
+![CP2](docs/fig_cp2_representation.png)
+
+Figura se regenerează cu `python docs/make_fig_cp2.py <root SEN12FLOOD> docs/fig_cp2_representation.png 1 2019-03-18`.
 
 ## CP3: rezultate v1
 
@@ -79,9 +80,9 @@ M2 − M1 = +0,12 [+0,01; +0,22]; **M1 − B1 = +0,06 [−0,11; +0,22]** (rezult
 distinge de Otsu). *Split-ul oficial are scurgere spațială; e rulat o dată, doar pentru comparație.
 Toate valorile, pe seed: [docs/results_v1_H8.csv](docs/results_v1_H8.csv) (md5 `80403936d254e9aeabc21f35cf91bedc`).
 
-![CP3](docs/fig_cp3_results.svg)
+![CP3](docs/fig_cp3_results.png)
 
-Varianta PNG de pe slide: `python docs/make_fig_cp3.py docs/results_v1_H8.csv fig_cp3_results.png`.
+Figura se regenerează cu `python docs/make_fig_cp3.py docs/results_v1_H8.csv docs/fig_cp3_results.png`.
 
 ## Structură
 
