@@ -10,7 +10,8 @@ Pipeline
   2. for every S1 pass: read VV/VH over the whole grid, convert to dB, cut the tiles;
   3. per tile: the same single-image + "anomaly vs. past" features as in training
      (``features.instant_features`` / ``features.temporal_features``, past = median of
-     the previous <= 6 images with the same orbit direction);
+     the previous <= 6 images from the same relative orbit, i.e. the same viewing geometry;
+     mixing two descending orbits with different incidence angles made the anomaly noisy);
   4. M2 (trained on all of SEN12FLOOD) gives P(flood) per tile and pass;
   5. alert: a tile is flagged when P >= threshold; the county alert counts flagged tiles.
 
@@ -118,11 +119,22 @@ def search_passes(start: str, end: str, aoi=AOI_LONLAT) -> pd.DataFrame:
 def read_pass(group: pd.DataFrame, grid: Grid) -> np.ndarray:
     """(2, H, W) VV/VH in dB (sigma0-equivalent) over the grid; frames of one pass are mosaicked."""
     import rasterio
+
+    H, W = grid.shape
+    out = np.full((2, H, W), np.nan, dtype="float32")
+    env = rasterio.Env(GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR", GDAL_HTTP_MERGE_CONSECUTIVE_RANGES="YES",
+                       GDAL_HTTP_MULTIPLEX="YES", GDAL_HTTP_MAX_RETRY="4", GDAL_HTTP_RETRY_DELAY="2")
+    with env:
+        _read_into(group, grid, out)
+    return out
+
+
+def _read_into(group: pd.DataFrame, grid: Grid, out: np.ndarray) -> None:
+    import rasterio
     from rasterio.enums import Resampling
     from rasterio.vrt import WarpedVRT
 
     H, W = grid.shape
-    out = np.full((2, H, W), np.nan, dtype="float32")
     for _, it in group.iterrows():
         for b, key in enumerate(["vv", "vh"]):
             with rasterio.open(it[key]) as src:
@@ -136,7 +148,6 @@ def read_pass(group: pd.DataFrame, grid: Grid) -> np.ndarray:
             a[~np.isfinite(a) | (a <= 0)] = np.nan
             fill = np.isnan(out[b]) & np.isfinite(a)
             out[b][fill] = 10 * np.log10(a[fill]) + GAMMA_TO_SIGMA_DB
-    return out
 
 
 def _nanmedian(a: np.ndarray) -> np.ndarray:
@@ -153,38 +164,54 @@ def cut(img: np.ndarray, r: int, c: int) -> np.ndarray:
 
 
 def galati_features(passes: pd.DataFrame, grid: Grid, max_ref: int = 6, min_valid: float = 0.8,
-                    verbose: bool = True) -> pd.DataFrame:
-    """Read every pass, cut tiles, compute the training features (past = same orbit direction)."""
+                    verbose: bool = True, workers: int = 6) -> pd.DataFrame:
+    """Read every pass, cut tiles, compute the training features (past = same relative orbit).
+
+    Passes are read in parallel threads (reading is network-bound); features are computed
+    in date order, because each image is compared with the images before it.
+    """
     import time
+    from concurrent.futures import ThreadPoolExecutor
 
     tiles = grid.tiles()
     history: dict[tuple[str, str], list[np.ndarray]] = {}
     rows = []
     groups = list(passes.groupby("pass_id", sort=False))
-    t0 = time.time()
-    for k, (pid, g) in enumerate(groups):
+
+    def load(group):
         try:
-            img = read_pass(g, grid)
+            return read_pass(group, grid), None
         except Exception as e:  # a broken asset should not stop the series
-            print("skip", pid, type(e).__name__, str(e)[:120])
-            continue
-        orbit = g.orbit.iloc[0]
-        for _, t in tiles.iterrows():
-            x = cut(img, t.row, t.col)
-            f, _ = instant_features(x)
-            if f["valid_frac"] < min_valid:
+            return None, f"{type(e).__name__}: {str(e)[:120]}"
+
+    t0 = time.time()
+    with ThreadPoolExecutor(workers) as pool:
+        futures = [pool.submit(load, g) for _, g in groups[:workers]]
+        for k, (pid, g) in enumerate(groups):
+            img, err = futures[k].result()
+            futures[k] = None                       # free memory as we go
+            if k + workers < len(groups):
+                futures.append(pool.submit(load, groups[k + workers][1]))
+            if img is None:
+                print("skip", pid, err)
                 continue
-            key = (t.tile, orbit)
-            prev = history.get(key, [])[-max_ref:]
-            ref = _nanmedian(np.stack(prev)) if prev else None
-            f |= temporal_features(x, ref, len(prev))
-            f |= {"tile": t.tile, "pass_id": pid, "date": g.date.iloc[0], "orbit": orbit,
-                  "rel_orbit": g.rel_orbit.iloc[0]}
-            rows.append(f)
-            history.setdefault(key, []).append(x.astype("float16").astype("float32"))
-            history[key] = history[key][-max_ref:]
-        if verbose and (k % 10 == 0 or k == len(groups) - 1):
-            print(f"{k + 1}/{len(groups)} passes, {len(rows)} tile-images, {time.time() - t0:.0f}s", flush=True)
+            orbit, rel = g.orbit.iloc[0], g.rel_orbit.iloc[0]
+            for _, t in tiles.iterrows():
+                x = cut(img, t.row, t.col)
+                f, _ = instant_features(x)
+                if f["valid_frac"] < min_valid:
+                    continue
+                key = (t.tile, rel)
+                prev = history.get(key, [])[-max_ref:]
+                ref = _nanmedian(np.stack(prev)) if prev else None
+                f |= temporal_features(x, ref, len(prev))
+                f |= {"tile": t.tile, "pass_id": pid, "date": g.date.iloc[0], "orbit": orbit,
+                      "rel_orbit": rel}
+                rows.append(f)
+                history.setdefault(key, []).append(x.astype("float16").astype("float32"))
+                history[key] = history[key][-max_ref:]
+            if verbose and (k % 10 == 0 or k == len(groups) - 1):
+                print(f"{k + 1}/{len(groups)} passes, {len(rows)} tile-images, {time.time() - t0:.0f}s", flush=True)
     return pd.DataFrame(rows)
 
 
@@ -208,7 +235,7 @@ def alert_table(gf: pd.DataFrame, model, cols, threshold: float = 0.5, min_prev:
                 event: tuple[str, str] = ("2024-09-13", "2024-09-30")) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Per tile-image probability, and per pass: tiles flagged, share flagged, in-event flag.
 
-    Tiles with fewer than `min_prev` earlier images on the same orbit direction have no
+    Tiles with fewer than `min_prev` earlier images from the same relative orbit have no
     reliable "normal" yet (start of the series) and are not scored.
     """
     g = gf.copy()
