@@ -9,7 +9,7 @@ Clientul este Primăria Galați (CLSU), iar decizia este alerta de inundație.
 | CP0 Concept | gata |
 | CP1 Observații | pipeline de ingestie SEN12FLOOD, data card, tabel SOA |
 | CP2 Reprezentare | anomalia față de imaginile anterioare vs. dB brut; baseline Otsu; split spațial (`features.py`, `learn.py`) |
-| **CP3 Învățare** | metodă vs. baseline-uri pe split spațial, 5 seed-uri, IC 95 % (`learn.py`, `docs/results_v1_H8.csv`) |
+| **CP3 Învățare** | metodă vs. baseline-uri pe split spațial, 5 seed-uri, IC 95 % (`learn.py`, `docs/results_v1_H8.csv`); scenariul de alertă pe Galați (`galati.py`, `docs/galati/`) |
 
 ## Instalare
 
@@ -31,11 +31,14 @@ SEN12FLOOD nu se pune în repo (12,2 GB). Se descarcă de pe
 python -m h8twin.cli ingest --root D:\data\SEN12FLOOD --out outputs   # index + split + statistici pentru data card
 python -m h8twin.cli figure --out outputs --seq 1                     # figura CP1: fracția de apă întunecată vs. etichetă
 python -m h8twin.cli learn --root D:\data\SEN12FLOOD --out outputs   # CP3: trăsături + 5 metode x 5 seed-uri -> results_v1_H8.csv
+python -m h8twin.cli galati --out outputs                            # CP3: seria S1 pe Galați + scenariul de alertă (internet)
 pytest -q                                                             # teste pe un set sintetic cu același format
 ```
 
-Tot proiectul rulează și în Kaggle, fără instalare: `notebooks/h8_cp3_kaggle.ipynb` (dataset Kaggle
-*SEN12FLOOD: Flood Detection Dataset*, CPU, circa 15 minute). Notebook-ul scrie modulele din `src/h8twin` cu `%%writefile`.
+Tot proiectul rulează și în Kaggle, fără instalare: `notebooks/h8_cp3_galati_kaggle.ipynb` (dataset Kaggle
+*SEN12FLOOD: Flood Detection Dataset*, Internet on, CPU, circa 28 de minute) clonează acest repo și rulează
+`ingest`, `learn` și `galati`. Varianta veche, fără Galați: `notebooks/h8_cp3_kaggle.ipynb` (circa 15 minute).
+Comanda `galati` are nevoie de `pip install -e .[galati]` (pystac-client, planetary-computer, bottleneck).
 
 Ce produce `ingest`:
 
@@ -84,6 +87,31 @@ Toate valorile, pe seed: [docs/results_v1_H8.csv](docs/results_v1_H8.csv) (md5 `
 
 Figura se regenerează cu `python docs/make_fig_cp3.py docs/results_v1_H8.csv docs/fig_cp3_results.png`.
 
+### Galați: scenariul de alertă (rezultat negativ)
+
+Comanda `galati` citește seria Sentinel-1 peste județul Galați din Microsoft Planetary Computer (colecția
+`sentinel-1-rtc`, fără cont; γ0 convertit aproximativ la σ0 cu −0,98 dB), o taie în 80 de tile-uri de 5 km
+(EPSG:32635, 10 m) și calculează aceleași trăsături ca pe SEN12FLOOD; istoricul e pe tile și pe orbita relativă.
+M2 e antrenat pe tot SEN12FLOOD și aplicat **fără reantrenare**. Fereastra evenimentului: 13–30 sept. 2024
+(inundațiile din 14 sept. 2024, Copernicus EMS EMSR758).
+
+| | |
+|---|---|
+| Treceri S1 | 131 (ASC 58, DES 36, DES 109), 122 cu ≥ 3 imagini anterioare pe aceeași orbită |
+| Tile-uri semnalate (P ≥ 0,5), treceri fără eveniment | **48 %** (toate cele 118 treceri au cel puțin o alertă; 77 % în decembrie) |
+| Tile-uri semnalate, cele 4 treceri din fereastră | 80 % (14.09), 50 %, 46 %, 51 % |
+| Treceri fără eveniment cu ≥ 80 % tile-uri semnalate | 20 % |
+| La P ≥ 0,9 | 17 % fără eveniment vs. 24 % în fereastră |
+
+Concluzie: pe Galați modelul reacționează la sezon și la umezeala solului, nu la apă; trecerea din timpul viiturii
+nu iese din zgomot, iar semnalul de întunecare (Δ < −3 dB) nu crește. Nu e încă o alertă utilizabilă pentru CLSU.
+Ieșirile: [docs/galati/](docs/galati/) (`galati_passes.csv`, `galati_summary.json`, `galati_tiles.csv`);
+scorurile pe tile (`galati_tile_scores.csv`, 0,9 MB) rămân în output-ul notebook-ului Kaggle.
+
+![Galați](docs/fig_cp3_galati.png)
+
+Figura se regenerează cu `python docs/make_fig_galati.py docs/galati docs/fig_cp3_galati.png`.
+
 ## Structură
 
 ```
@@ -92,11 +120,14 @@ src/h8twin/stats.py        statistici pentru data card
 src/h8twin/features.py     trăsături pe imagine: distribuția VV/VH + anomalia față de imaginile anterioare (aceeași orbită)
 src/h8twin/learn.py        experimentul CP3: B0, B1 Otsu, B2 prag pe schimbare, M1/M2 gradient boosting, IC pe seed-uri
 src/h8twin/figures.py      figura CP1 (fracția de pixeli VV < -18 dB vs. etichetă)
-src/h8twin/cli.py          comenzile ingest / figure / learn
-notebooks/h8_cp3_kaggle.ipynb  tot proiectul, rulabil în Kaggle
+src/h8twin/galati.py       seria S1 pe Galați (Planetary Computer), tile-uri de 5 km, trăsături, alerta M2
+src/h8twin/cli.py          comenzile ingest / figure / learn / galati
+notebooks/h8_cp3_galati_kaggle.ipynb  tot proiectul + Galați, rulabil în Kaggle
+notebooks/h8_cp3_kaggle.ipynb  varianta fără Galați
 docs/results_v1_H8.csv     rezultatele CP3 (run / summary / paired_diff)
-docs/make_fig_cp2.py, make_fig_cp3.py  figurile CP2 și CP3
-gee/galati_s1_timeseries.js  export GEE al seriei S1 pe Galați (încă nerulat)
+docs/galati/               ieșirile comenzii galati (treceri, rezumat, tile-uri)
+docs/make_fig_cp2.py, make_fig_cp3.py, make_fig_galati.py  figurile CP2, CP3 și Galați
+gee/galati_s1_timeseries.js  alternativa GEE (nefolosită: seria vine din Planetary Computer)
 docs/datacard_H8.md        data card
 docs/soa_H8.md             tabelul SOA (10 articole)
 docs/stats_cp1.json        rezultatul ingest pe SEN12FLOOD (metadate complete, pixeli pe 4 secvențe)
@@ -105,4 +136,4 @@ tests/                     test end-to-end pe date sintetice
 
 ## Licențe
 
-Codul: MIT. SEN12FLOOD conține date Copernicus Sentinel modificate (2018–2019), sub Termenii și condițiile Sentinel.
+Codul: MIT. Seria Galați: date Copernicus Sentinel-1 (2023–2025) procesate de Microsoft Planetary Computer. SEN12FLOOD conține date Copernicus Sentinel modificate (2018–2019), sub Termenii și condițiile Sentinel.

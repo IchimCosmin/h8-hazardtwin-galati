@@ -11,6 +11,7 @@ dependencies = ["numpy", "pandas", "rasterio", "matplotlib", "scipy", "scikit-le
 
 [project.optional-dependencies]
 dev = ["pytest"]
+galati = ["pystac-client", "planetary-computer", "bottleneck"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
