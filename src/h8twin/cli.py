@@ -2,9 +2,14 @@
 
     python -m h8twin.cli ingest  --root D:/data/SEN12FLOOD --out outputs
     python -m h8twin.cli figure  --out outputs [--seq 1]
+    python -m h8twin.cli learn   --root D:/data/SEN12FLOOD --out outputs
+    python -m h8twin.cli galati  --out outputs --start 2023-09-01 --end 2025-03-01
 
 `ingest` writes outputs/index.csv, outputs/split.csv, outputs/stats.json.
 `figure` writes outputs/fig_cp1_sequence.png (dark-pixel fraction vs. label).
+`learn` writes outputs/features.csv and outputs/results_v1_H8.csv (method vs. baselines).
+`galati` reads the Sentinel-1 series over Galați from Planetary Computer (needs internet),
+trains M2 on outputs/features.csv and writes the alert scenario (outputs/galati_*.csv).
 """
 from __future__ import annotations
 
@@ -75,6 +80,48 @@ def cmd_learn(a):
     print("wrote", out / a.results)
 
 
+def cmd_galati(a):
+    import numpy as np
+
+    from . import galati as G
+
+    out = Path(a.out)
+    df = pd.read_csv(out / "features.csv", dtype={"seq": str})
+    grid = G.make_grid()
+    tiles = grid.tiles()
+    tiles.to_csv(out / "galati_tiles.csv", index=False)
+    fp = out / "galati_features.csv"
+    if fp.exists() and not a.recompute:
+        gf = pd.read_csv(fp, parse_dates=["date"])
+    else:
+        passes = G.search_passes(a.start, a.end)
+        passes.drop(columns=["vv", "vh"]).to_csv(out / "galati_items.csv", index=False)
+        print(f"{len(passes)} S1 items, {passes.pass_id.nunique()} passes, "
+              f"orbits: {passes.groupby('orbit').pass_id.nunique().to_dict()}", flush=True)
+        gf = G.galati_features(passes, grid)
+        gf.to_csv(fp, index=False)
+    model, cols = G.train_m2(df)
+    summary = {"start": a.start, "end": a.end, "event": [a.event_start, a.event_end],
+               "tiles": int(len(tiles)), "tile_images": int(len(gf)), "passes": int(gf.pass_id.nunique()),
+               "thresholds": {}}
+    for thr in a.thresholds:
+        g, per = G.alert_table(gf, model, cols, threshold=thr, event=(a.event_start, a.event_end))
+        q, e = per[~per.in_event], per[per.in_event]
+        gq = g[g.scored & ~g.date.between(pd.Timestamp(a.event_start), pd.Timestamp(a.event_end))]
+        summary["thresholds"][str(thr)] = {
+            "quiet_passes": int(len(q)), "quiet_passes_with_alert": int((q.flagged > 0).sum()),
+            "quiet_tile_flag_rate": round(float(gq.flag.mean()), 4) if len(gq) else None,
+            "quiet_flagged_tiles_per_pass_mean": round(float(q.flagged.mean()), 2) if len(q) else None,
+            "event_passes": int(len(e)), "event_passes_with_alert": int((e.flagged > 0).sum()),
+            "event_flagged_tiles": e.flagged.astype(int).tolist(), "event_dates": e.date.dt.strftime("%Y-%m-%d").tolist()}
+        if thr == a.thresholds[0]:
+            g[["tile", "pass_id", "date", "orbit", "n_prev", "valid_frac", "d_vv_lt3", "new_dark_vv18",
+               "p_flood", "scored", "flag"]].round(4).to_csv(out / "galati_tile_scores.csv", index=False)
+            per.round(4).to_csv(out / "galati_passes.csv", index=False)
+    (out / "galati_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    print(json.dumps(summary, indent=2))
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="h8twin")
     sub = p.add_subparsers(required=True)
@@ -101,6 +148,15 @@ def main(argv=None):
     l.add_argument("--results", default="results_v1_H8.csv")
     l.add_argument("--recompute", action="store_true")
     l.set_defaults(fn=cmd_learn)
+    g = sub.add_parser("galati")
+    g.add_argument("--out", default="outputs")
+    g.add_argument("--start", default="2023-09-01")
+    g.add_argument("--end", default="2025-03-01")
+    g.add_argument("--event-start", default="2024-09-13")
+    g.add_argument("--event-end", default="2024-09-30")
+    g.add_argument("--thresholds", type=float, nargs="+", default=[0.5, 0.7, 0.9])
+    g.add_argument("--recompute", action="store_true")
+    g.set_defaults(fn=cmd_galati)
     a = p.parse_args(argv)
     a.fn(a)
 
