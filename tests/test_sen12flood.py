@@ -88,3 +88,39 @@ def test_learn_runs(root, tmp_path):
     runs = res[res.row_type == "run"]
     assert set(runs.method) == set(METHODS)
     assert {"summary", "paired_diff"} <= set(res.row_type)
+
+
+def test_galati_offline(root, tmp_path, monkeypatch):
+    """Galați alert pipeline with Planetary Computer replaced by synthetic passes."""
+    import pandas as pd
+
+    from h8twin import galati as G
+    from h8twin.features import extract_features
+
+    out = tmp_path / "out"
+    out.mkdir()
+    df, _ = extract_features(build_index(root, sensors=("S1",)), n_jobs=1)
+    df.to_csv(out / "features.csv", index=False)
+
+    small = G.Grid(560000, 5040000, 2, 1)              # two tiles, keeps the test fast
+    monkeypatch.setattr(G, "make_grid", lambda aoi=None: small)
+    dates = pd.date_range("2024-08-01", "2024-10-10", freq="6D")
+    passes = pd.DataFrame({"date": dates, "orbit": "ASCENDING", "rel_orbit": 7})
+    passes["pass_id"] = passes.date.dt.strftime("%Y-%m-%d") + "_ASC_7"
+    monkeypatch.setattr(G, "search_passes", lambda start, end, aoi=None: passes.assign(vv="", vh=""))
+    rng = np.random.default_rng(0)
+
+    def fake_read(group, grid):
+        H, W = grid.shape
+        x = rng.normal(-12, 2, (2, H, W)).astype("float32")
+        x[1] -= 7
+        if pd.Timestamp("2024-09-15") <= group.date.iloc[0] < pd.Timestamp("2024-09-25"):
+            x[:, :300, :300] = -24
+        return x
+
+    monkeypatch.setattr(G, "read_pass", fake_read)
+    main(["galati", "--out", str(out), "--thresholds", "0.5"])
+    per = pd.read_csv(out / "galati_passes.csv")
+    assert {"flagged", "share_flagged", "in_event"} <= set(per.columns)
+    st = json.loads((out / "galati_summary.json").read_text())
+    assert st["tiles"] == 2 and st["passes"] == len(dates)
