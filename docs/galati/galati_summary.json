@@ -1,0 +1,73 @@
+{
+  "start": "2023-09-01",
+  "end": "2025-03-01",
+  "event": [
+    "2024-09-13",
+    "2024-09-30"
+  ],
+  "tiles": 80,
+  "tile_images": 10480,
+  "passes": 131,
+  "thresholds": {
+    "0.5": {
+      "quiet_passes": 118,
+      "quiet_passes_with_alert": 118,
+      "quiet_tile_flag_rate": 0.4801,
+      "quiet_flagged_tiles_per_pass_mean": 38.41,
+      "event_passes": 4,
+      "event_passes_with_alert": 4,
+      "event_flagged_tiles": [
+        64,
+        40,
+        37,
+        41
+      ],
+      "event_dates": [
+        "2024-09-14",
+        "2024-09-21",
+        "2024-09-22",
+        "2024-09-26"
+      ]
+    },
+    "0.7": {
+      "quiet_passes": 118,
+      "quiet_passes_with_alert": 118,
+      "quiet_tile_flag_rate": 0.3623,
+      "quiet_flagged_tiles_per_pass_mean": 28.98,
+      "event_passes": 4,
+      "event_passes_with_alert": 4,
+      "event_flagged_tiles": [
+        44,
+        31,
+        31,
+        34
+      ],
+      "event_dates": [
+        "2024-09-14",
+        "2024-09-21",
+        "2024-09-22",
+        "2024-09-26"
+      ]
+    },
+    "0.9": {
+      "quiet_passes": 118,
+      "quiet_passes_with_alert": 115,
+      "quiet_tile_flag_rate": 0.1734,
+      "quiet_flagged_tiles_per_pass_mean": 13.87,
+      "event_passes": 4,
+      "event_passes_with_alert": 4,
+      "event_flagged_tiles": [
+        19,
+        18,
+        22,
+        17
+      ],
+      "event_dates": [
+        "2024-09-14",
+        "2024-09-21",
+        "2024-09-22",
+        "2024-09-26"
+      ]
+    }
+  }
+}
